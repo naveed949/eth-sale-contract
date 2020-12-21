@@ -1,5 +1,3 @@
-
-// import "tokens/eip20/EIP20.sol";
 import "zeppelin-solidity/contracts/math/SafeMath.sol";
 import "zeppelin-solidity/contracts/crowdsale/Crowdsale.sol";
 import "zeppelin-solidity/contracts/ownership/Ownable.sol";
