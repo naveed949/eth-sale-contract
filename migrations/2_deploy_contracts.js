@@ -1,7 +1,5 @@
-let ProxyFactory = artifacts.require('./ProxyFactory.sol');
-let BondingCurve = artifacts.require('./EthPolynomialCurvedToken.sol');
+let tokenSale = artifacts.require('./TokenSaleContract.sol');
 
 module.exports = function (deployer) {
-  deployer.deploy(ProxyFactory);
-  deployer.deploy(BondingCurve);
+  deployer.deploy(tokenSale);
 };
