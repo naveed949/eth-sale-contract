@@ -11,7 +11,6 @@ using SafeMath for uint256;
 
 uint startTime;
 uint endTime;
-mapping(uint => uint256) priceToken;
 uint256 softCap;
 uint256 hardCap;
 uint256 ethPrice;
@@ -39,15 +38,15 @@ _;
 }
 struct block {
     uint supply;
-    uint lockPeriod;
-    uint vestingPeriod;
+    uint lockPeriod; // days
+    uint vestingPeriod;  // days
     uint releasePerDayPerc;
     uint releasePerDayDiv;
     uint releasePerHourPerc;
     uint releasePerHourDiv;
     uint price;
     uint256 issued;
-    mapping(address => uint) holders;
+  //   mapping(address => uint) holders;
 }
 mapping(uint8 => block) saleTokens;
 mapping(uint8 => block) nonsaleTokens;
@@ -59,11 +58,11 @@ struct tokens {
 mapping(address => tokens) balance;
 // init blocks 1-4 saleable & 5 nonsaleable blocks
 function initBlocks() internal {
-    saleTokens[1] = block(1000000,0, 30,334,10000,1391666667,1000000000000,0.15 ether,0);
-    saleTokens[2] = block(2000000,0, 14,715,10000,2979166667,1000000000000,0.20 ether,0);
-    saleTokens[3] = block(3000000,0, 7,143,1000,5958333333,1000000000000,0.25 ether,0);
-    saleTokens[4] = block(4000000,0, 0,1,100,41666666667,1000000000000,0.30 ether,0);
-    saleTokens[5] = block(1000000,30, 180,5479452055,1000000000000,228310502,1000000000000,0.30 ether,0); // advisors block
+    saleTokens[1] = block(1000000,0 days, 30 days,334,10000,1391666667,1000000000000,0.15 ether,0);
+    saleTokens[2] = block(2000000,0 days, 14 days,715,10000,2979166667,1000000000000,0.20 ether,0);
+    saleTokens[3] = block(3000000,0 days, 7 days,143,1000,5958333333,1000000000000,0.25 ether,0);
+    saleTokens[4] = block(4000000,0 days, 0 days,1,100,41666666667,1000000000000,0.30 ether,0);
+    saleTokens[5] = block(1000000,30 days, 180 days,5479452055,1000000000000,228310502,1000000000000,0.30 ether,0); // advisors block
 }
 
 // end Sale
@@ -75,10 +74,11 @@ function endSale() onlyOwner external isSaleble {
 
 // to buy tokens
 function buyTokens(uint8 _block) isSaleble payable {
+    require(minBuy < msg.value && msg.value < maxBuy,"buyer limit mismatched");
     require(balance[msg.sender].amount == 0,"buyer already exists");
     require(0 < _block &&_block < 5,"invalid block");
     
-    uint256 amount = saleTokens[_block].price * msg.value;
+    uint256 amount = (saleTokens[_block].price ) * msg.value;  // price in eth but value in wei :/
 
     
     balance[msg.sender] = tokens(amount,_block);
@@ -87,9 +87,12 @@ function buyTokens(uint8 _block) isSaleble payable {
 }
 
 // to claim vested tokens
-function tokenVesting(uint8 _block) external{
-// lock period ended, vesting calculation
-// require(saleTokens[_block].lockPeriod);
+function tokenVesting(uint8 _block) internal{
+// sale & lock period ended, vesting calculation
+require(saleEnd && ( saleTokens[_block].lockPeriod + endTime ) > now, "Vesting isn't enabled yet");
+require(balance[msg.sender].amount > 0, "no tokens to vest");
+
+uint value = perCalc(balance[msg.sender].amount, saleTokens[_block].)
 }
 
 function perCalc(uint amount, uint percentage, uint div) internal returns(uint ){
