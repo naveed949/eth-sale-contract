@@ -17,11 +17,22 @@ uint256 minBuy;
 uint256 maxBuy;
 
 bool saleEnd;
+address companyWallet;
+
+constructor(uint _startTime, uint256 _softCap, uint256 _hardCap, uint256 minBuy, uint256 maxBuy, address _wallet){
+    startTime = _startTime;
+    softCap = _sotCap;
+    hardCap = _hardCap;
+    minBuy = _minBuy;
+    maxBuy = _maxBuy;
+    companyWallet = _wallet;
+}
+
 // Allow other ERC20 tokens to be withdrawn from contract in case of accidental deposit, except
 // for the token being sold.
 function withdrawERC20(uint256 _amount, address _token, address _to) onlyOwner external {
-ERC20Basic erc20 =  ERC20Basic(_token);
-erc20.transfer(_to, _amount);
+    ERC20Basic erc20 =  ERC20Basic(_token);
+    erc20.transfer(_to, _amount);
 }
 
 // start sale
@@ -31,8 +42,8 @@ _;
 }
 // check if sale ended or not
 modifier isSaleble {
-require(now >= startTime,"sale not yet started");
-require(!saleEnd,"Sale ended");
+    require(now >= startTime,"sale not yet started");
+    require(!saleEnd,"Sale ended");
 _;
 }
 struct block {
@@ -62,7 +73,11 @@ function initBlocks() internal {
     saleTokens[2] = block(2000000,0 days, 14 days,715,10000,2979166667,1000000000000,0.20 ether,0);
     saleTokens[3] = block(3000000,0 days, 7 days,143,1000,5958333333,1000000000000,0.25 ether,0);
     saleTokens[4] = block(4000000,0 days, 0 days,1,100,41666666667,1000000000000,0.30 ether,0);
-    saleTokens[5] = block(1000000,30 days, 180 days,5479452055,1000000000000,228310502,1000000000000,0.30 ether,0); // advisors block
+    saleTokens[5] = block(1000000,30 days, 180 days,5479452055,1000000000000,228310502,1000000000000,0 ether,0); // advisors block
+    saleTokens[6] = block(2000000,0 days, 365 days,2739726027,1000000000000,114155251,1000000000000,0 ether,0); // marketing/staking block
+    saleTokens[7] = block(2000000,180 days, 3*365 days,1,1000,41666667,1000000000000,0 ether,0); // team block
+    saleTokens[8] = block(500000,0 days, 365 days,2739726027,1000000000000,114155251,1000000000000,0 ether,0); // bounty block
+    saleTokens[9] = block(500000,180 days, 180 days,108,10000,45,100000,0 ether,0); // airdrops block
 }
 
 // end Sale
@@ -70,15 +85,35 @@ function endSale() onlyOwner external isSaleble {
 
  saleEnd = true;
  endTime = now;
+ // burn tokens which are not issued yet saleable tokens only e.g burnable = supply - issued
+ for(uint i = 0; i <= 4; i++){
+     if(saleTokens[i].supply > saleTokens[i].issued){
+         // burning extra tokens
+         saleTokens[i].supply = saleTokens[i].issued;
+     }
+ }
+ // transfer raised eth to respective addresses as per quota
+    // 67.5% to company wallet, 30% for uniswap, 2.5% for referals
+    uint256 eths;
+        eths = perCalc(address(this).balance,675,1000);
+        address(this).transfer(companyWallet,eths);
 }
+/// Ability to add users after sale ended in nonsaleable blocks
+function issueNonSaleTokens(address account,uint256 amount, uint8 _block) onlyOwner external {
+    require(balance[account].amount == 0,"buyer already exists");
+    require(4 < _block &&_block < 10,"invalid block"); 
 
+    balance[account] = tokens(amount,0,_block);
+    saleTokens[_block].issued.add(amount);
+    require(saleTokens[_block].supply >= saleTokens[_block].issued,"amount exceeds block supply");
+}
 // to buy tokens
 function buyTokens(uint8 _block) isSaleble payable {
     require(minBuy < msg.value && msg.value < maxBuy,"buyer limit mismatched");
     require(balance[msg.sender].amount == 0,"buyer already exists");
     require(0 < _block &&_block < 5,"invalid block");
     
-    uint256 amount = (saleTokens[_block].price ) * msg.value;  // price in eth but value in wei :/
+    uint256 amount = (saleTokens[_block].price ) * msg.value;  // price in eth but value in wei :/ (auto conversion)
 
     
     balance[msg.sender] = tokens(amount,0,_block);
@@ -87,7 +122,7 @@ function buyTokens(uint8 _block) isSaleble payable {
 }
 
 // to claim vested tokens
-function tokenVesting(uint8 _block) internal{
+function claim(uint8 _block) external {
 // sale & lock period ended, vesting calculation
 require(saleEnd && ( saleTokens[_block].lockPeriod + endTime ) < now, "vesting isn't started yet");
 require(balance[msg.sender].blockId == _block && balance[msg.sender].amount > 0, "no tokens to vest");
