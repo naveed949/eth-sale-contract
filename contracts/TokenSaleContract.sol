@@ -1,11 +1,10 @@
-import "zeppelin-solidity/contracts/math/SafeMath.sol";
-import "zeppelin-solidity/contracts/crowdsale/Crowdsale.sol";
-import "zeppelin-solidity/contracts/ownership/Ownable.sol";
-import "zeppelin-solidity/contracts/token/ERC20/ERC20Basic.sol";
+import "openzeppelin-solidity/contracts/math/SafeMath.sol";
+import "openzeppelin-solidity/contracts/access/Ownable.sol";
+import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 
 /// @title  TokenSaleContract - A sale contract of token plus uniswap
 ///         implementation that is backed by ether.
-contract TokenSale is Crowdsale, Ownable {
+contract TokenSale is Ownable, ERC20 {
 
 using SafeMath for uint256;
 
@@ -53,6 +52,7 @@ mapping(uint8 => block) nonsaleTokens;
 
 struct tokens {
     uint256 amount;
+    uint256 lastVestingTime;
     uint8 blockId;
 }
 mapping(address => tokens) balance;
@@ -81,7 +81,7 @@ function buyTokens(uint8 _block) isSaleble payable {
     uint256 amount = (saleTokens[_block].price ) * msg.value;  // price in eth but value in wei :/
 
     
-    balance[msg.sender] = tokens(amount,_block);
+    balance[msg.sender] = tokens(amount,0,_block);
     saleTokens[_block].issued.add(amount);
     require(saleTokens[_block].supply >= saleTokens[_block].issued,"amount exceeds supply");
 }
@@ -89,13 +89,38 @@ function buyTokens(uint8 _block) isSaleble payable {
 // to claim vested tokens
 function tokenVesting(uint8 _block) internal{
 // sale & lock period ended, vesting calculation
-require(saleEnd && ( saleTokens[_block].lockPeriod + endTime ) > now, "Vesting isn't enabled yet");
-require(balance[msg.sender].amount > 0, "no tokens to vest");
+require(saleEnd && ( saleTokens[_block].lockPeriod + endTime ) < now, "vesting isn't started yet");
+require(balance[msg.sender].blockId == _block && balance[msg.sender].amount > 0, "no tokens to vest");
 
-uint value = perCalc(balance[msg.sender].amount, saleTokens[_block].)
+// save last vested time and then caclulate current with it to find how much to be vested now and then update last vvested time
+// calculate no. hours. obtain 1 hour amount and multiply with total hours
+uint value = perCalc(balance[msg.sender].amount, saleTokens[_block].releasePerHourPerc, saleTokens[_block].releasePerHourDiv);
+uint hour;
+if(balance[msg.sender].lastVestingTime == 0){
+     hour = (now - saleTokens[_block].lockPeriod + endTime).div(1 hours);
+}else
+ hour = (now - balance[msg.sender].lastVestingTime).div(1 hours);
+
+ value = value.mul(hour);
+ // last vesting time update
+ balance[msg.sender].lastVestingTime = now;
+// vested tokens deduct from block's tokens
+if(balance[msg.sender].amount >= value){
+    balance[msg.sender].amount.sub(value);
+}else{
+    value = balance[msg.sender].amount;
+    balance[msg.sender].amount = 0;
 }
+
+// add tokens to erc20 supply as vested tokens to be consumed and used as user wants.
+_mint(msg.sender, value);
+// emit token vested
+emit Vesting(msg.sender,value,_block);
+}
+
 
 function perCalc(uint amount, uint percentage, uint div) internal returns(uint ){
     return ( amount * percentage ) / div;
 }
+event Vesting(address indexed account, uint256 amount, uint8 blockId);
 }
