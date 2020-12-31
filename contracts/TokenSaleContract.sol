@@ -15,17 +15,19 @@ uint256 hardCap;
 uint256 ethPrice;
 uint256 minBuy;
 uint256 maxBuy;
-
+uint256 uniswapEth;
+uint256 referalEthReward;
 bool saleEnd;
 address companyWallet;
 
-constructor(uint _startTime, uint256 _softCap, uint256 _hardCap, uint256 minBuy, uint256 maxBuy, address _wallet){
+constructor(uint _startTime, uint256 _softCap, uint256 _hardCap, uint256 minBuy, uint256 maxBuy, address _wallet) public {
     startTime = _startTime;
     softCap = _sotCap;
     hardCap = _hardCap;
     minBuy = _minBuy;
     maxBuy = _maxBuy;
     companyWallet = _wallet;
+    initBlocks();
 }
 
 // Allow other ERC20 tokens to be withdrawn from contract in case of accidental deposit, except
@@ -86,7 +88,7 @@ function endSale() onlyOwner external isSaleble {
  saleEnd = true;
  endTime = now;
  // burn tokens which are not issued yet saleable tokens only e.g burnable = supply - issued
- for(uint i = 0; i <= 4; i++){
+ for(uint i = 1; i <= 4; i++){
      if(saleTokens[i].supply > saleTokens[i].issued){
          // burning extra tokens
          saleTokens[i].supply = saleTokens[i].issued;
@@ -96,7 +98,9 @@ function endSale() onlyOwner external isSaleble {
     // 67.5% to company wallet, 30% for uniswap, 2.5% for referals
     uint256 eths;
         eths = perCalc(address(this).balance,675,1000);
-        address(this).transfer(companyWallet,eths);
+        require(address(this).transfer(companyWallet,eths),"failed to transfer eth to company wallet");
+        uniswapEth = perCalc(address(this).balance,30,100);
+        referalEthReward = perCalc(address(this).balance,25,1000);
 }
 /// Ability to add users after sale ended in nonsaleable blocks
 function issueNonSaleTokens(address account,uint256 amount, uint8 _block) onlyOwner external {
@@ -156,6 +160,14 @@ emit Vesting(msg.sender,value,_block);
 
 function perCalc(uint amount, uint percentage, uint div) internal returns(uint ){
     return ( amount * percentage ) / div;
+}
+function balanceOfBlock(address account) view external returns(uint,uint){
+    return (balance[account].amount,balance[account].blockId);
+}
+function referalReward(address account, uint256 amount) onlyOwner external {
+    require(referalEthReward > 0,"no funds left to send");
+    require(address(this).transfer(account,amount),"can't send Eths");
+    referalEthReward.sub(amount);
 }
 event Vesting(address indexed account, uint256 amount, uint8 blockId);
 }
