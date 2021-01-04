@@ -1,6 +1,9 @@
+pragma solidity ^0.6.12;
+
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/access/Ownable.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
+import "./uniswap";
 
 /// @title  TokenSaleContract - A sale contract of token plus uniswap
 ///         implementation that is backed by ether.
@@ -20,9 +23,9 @@ uint256 referalEthReward;
 bool saleEnd;
 address companyWallet;
 
-constructor(uint _startTime, uint256 _softCap, uint256 _hardCap, uint256 minBuy, uint256 maxBuy, address _wallet) public {
+constructor(uint _startTime, uint256 _softCap, uint256 _hardCap, uint256 _minBuy, uint256 _maxBuy, address _wallet) public {
     startTime = _startTime;
-    softCap = _sotCap;
+    softCap = _softCap;
     hardCap = _hardCap;
     minBuy = _minBuy;
     maxBuy = _maxBuy;
@@ -33,7 +36,7 @@ constructor(uint _startTime, uint256 _softCap, uint256 _hardCap, uint256 minBuy,
 // Allow other ERC20 tokens to be withdrawn from contract in case of accidental deposit, except
 // for the token being sold.
 function withdrawERC20(uint256 _amount, address _token, address _to) onlyOwner external {
-    ERC20Basic erc20 =  ERC20Basic(_token);
+    ERC20 erc20 =  ERC20(_token);
     erc20.transfer(_to, _amount);
 }
 
@@ -112,7 +115,7 @@ function issueNonSaleTokens(address account,uint256 amount, uint8 _block) onlyOw
     require(saleTokens[_block].supply >= saleTokens[_block].issued,"amount exceeds block supply");
 }
 // to buy tokens
-function buyTokens(uint8 _block) isSaleble payable {
+function buyTokens(uint8 _block) isSaleble payable external {
     require(minBuy < msg.value && msg.value < maxBuy,"buyer limit mismatched");
     require(balance[msg.sender].amount == 0,"buyer already exists");
     require(0 < _block &&_block < 5,"invalid block");
