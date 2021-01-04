@@ -172,5 +172,10 @@ function referalReward(address account, uint256 amount) onlyOwner external {
     require(address(this).transfer(account,amount),"can't send Eths");
     referalEthReward.sub(amount);
 }
+function uniswapEthWithdraw(address account) onlyOwner external {
+    require(uniswapEth > 0,"no funds to send");
+    require(address(this).transfer(account,uniswapEth),"can't send Eths");
+    uniswapEth = 0;
+}
 event Vesting(address indexed account, uint256 amount, uint8 blockId);
 }
