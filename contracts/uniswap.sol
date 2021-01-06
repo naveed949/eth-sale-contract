@@ -1,11 +1,10 @@
-pragma solidity 0.6.6;
+pragma solidity ^0.6.6;
 
-import "https://github.com/Uniswap/uniswap-v2-periphery/blob/master/contracts/interfaces/IUniswapV2Router02.sol";
-import "https://github.com/Uniswap/uniswap-v2-periphery/blob/master/contracts/interfaces/IERC20.sol";
-//import '@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol';
+import "contracts/uniswap/IUniswapV2Router02.sol";
+import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
 
 contract UniswapExample {
-  address internal constant UNISWAP_ROUTER_ADDRESS = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D ;
+  address internal constant UNISWAP_ROUTER_ADDRESS = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D ; //kovan
 
   IUniswapV2Router02 public uniswapRouter;
 
@@ -32,17 +31,6 @@ contract UniswapExample {
 
       }
 
-  function convertTokenToToken(uint tokenInAmount,uint tokenOutAmount , address tokenIn, address tokenOut) public {
-
-        uint deadline2 = block.timestamp + 30;
-   
-        IERC20 tok = IERC20(tokenIn);
-   
-        require(tok.approve(address(uniswapRouter),tokenInAmount),"Approve failed");
-
-        uniswapRouter.swapExactTokensForTokens(tokenInAmount,tokenOutAmount, getPathForTokentoToken(tokenIn,tokenOut), address(this), deadline2);
-   
-    }
 
   function getEstimatedETHforToken(uint tokAmount , address tokenAdd) public view returns (uint[] memory) {
     return uniswapRouter.getAmountsOut(tokAmount, getPathForETHtoToken(tokenAdd));
@@ -52,9 +40,6 @@ contract UniswapExample {
     return uniswapRouter.getAmountsOut(tokAmount, getPathForTokentoETH(tokenAdd));
   }
 
-  function getEstimatedTokenforToken(uint tokAmount, address tokenIn, address tokenOut ) public view returns (uint[] memory) {
-    return uniswapRouter.getAmountsOut(tokAmount, getPathForTokentoToken(tokenIn,tokenOut));
-  }
 
   function getPathForETHtoToken(address tokenAdd) private view returns (address[] memory) {
     address[] memory path = new address[](2);
@@ -71,35 +56,7 @@ contract UniswapExample {
 
     return path;
   }
-
-   function getPathForTokentoToken(address tokenIn,address tokenOut) private view returns (address[] memory) {
-    address[] memory path = new address[](2);
-    path[0] = tokenIn;
-    path[1] = tokenOut;
-
-    return path;
-  }
  
-  function swapEth(address[] memory tokens,uint tokAmount) public {
-     
-
-    for( uint i=0 ; i <= tokens.length ; i++ ){
-       
-       if(i==0){
-           
-           convertEthToToken(tokAmount,tokens[0],address(this).balance);
-       }
-       else if(i == tokens.length){
-           IERC20 tok = IERC20(tokens[i-1]);
-           convertTokenToEth(0,tok.balanceOf(address(this)),tokens[i-1]);
-       }
-       else{
-           
-           IERC20 tok = IERC20(tokens[i-1]);
-           convertTokenToToken(tok.balanceOf(address(this)),0,tokens[i-1],tokens[i]);
-       }
-    }
-  }
  
   function getBalance(address token ) public view returns (uint ) {
     IERC20 tok = IERC20(token);
@@ -111,26 +68,5 @@ contract UniswapExample {
 
   }
  
-  function withdraw(address payable to) public {
 
-    to.transfer(address(this).balance);
-   
-  }
- 
- 
-  function withdrawToken(address to,address tok) public {
-       
-        IERC20 tokk = IERC20(tok);
-        tokk.transfer(to,tokk.balanceOf(address(this)));
-   
-  }
- 
-  function deposit() public payable returns (uint ){
-
-     return address(this).balance;
-  }
-
-
-  // important to receive ETH
-  receive() payable external {}
 }
