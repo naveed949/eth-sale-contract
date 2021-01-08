@@ -42,14 +42,14 @@ function withdrawERC20(uint256 _amount, address _token, address _to) onlyOwner e
 
 // start sale
 modifier isSaleStarted {
-require(now >= startTime);
-_;
+    require(now >= startTime);
+    _;
 }
 // check if sale ended or not
 modifier isSaleble {
     require(now >= startTime,"sale not yet started");
     require(!saleEnd,"Sale ended");
-_;
+    _;
 }
 struct TokenBlock {
     uint supply;
@@ -63,7 +63,7 @@ struct TokenBlock {
     uint256 issued;
   //   mapping(address => uint) holders;
 }
-mapping(uint8 => TokenBlock) saleTokens;
+mapping(uint8 => TokenBlock) public saleTokens;
 mapping(uint8 => TokenBlock) nonsaleTokens;
 
 struct tokens {
@@ -86,7 +86,7 @@ function initBlocks() internal {
 }
 
 // end Sale
-function endSale() onlyOwner external isSaleble {
+function endSale() onlyOwner external isSaleble returns (bool) {
 
  saleEnd = true;
  endTime = now;
@@ -104,6 +104,7 @@ function endSale() onlyOwner external isSaleble {
         companyWallet.transfer(eths);
         uniswapEth = perCalc(address(this).balance,30,100);
         referalEthReward = perCalc(address(this).balance,25,1000);
+    return true;
 }
 /// Ability to add users after sale ended in nonsaleable blocks
 function issueNonSaleTokens(address account,uint256 amount, uint8 _block) onlyOwner external {
@@ -116,16 +117,19 @@ function issueNonSaleTokens(address account,uint256 amount, uint8 _block) onlyOw
 }
 // to buy tokens
 function buyTokens(uint8 _block) isSaleble payable external {
-    require(minBuy < msg.value && msg.value < maxBuy,"buyer limit mismatched");
+    
     require(balance[msg.sender].amount == 0,"buyer already exists");
     require(0 < _block &&_block < 5,"invalid block");
     
-    uint256 amount = (saleTokens[_block].price ) * msg.value;  // price in eth but value in wei :/ (auto conversion)
-
+    uint256 amount = msg.value / (saleTokens[_block].price );  // price in eth but value in wei :/ (auto conversion)
+    require(minBuy <= amount,"amount too low");
+    require(amount <= maxBuy,"amount too high");
     
     balance[msg.sender] = tokens(amount,0,_block);
     saleTokens[_block].issued.add(amount);
     require(saleTokens[_block].supply >= saleTokens[_block].issued,"amount exceeds supply");
+
+    emit BuyTokens(msg.sender,_block,amount);
 }
 
 // to claim vested tokens
@@ -161,10 +165,10 @@ emit Vesting(msg.sender,value,_block);
 }
 
 
-function perCalc(uint amount, uint percentage, uint div) internal returns(uint ){
+function perCalc(uint amount, uint percentage, uint div) pure internal returns(uint ){
     return ( amount * percentage ) / div;
 }
-function balanceOfBlock(address account) view external returns(uint,uint){
+function balanceOfBlock(address account) view external returns(uint _amount,uint _block){
     return (balance[account].amount,balance[account].blockId);
 }
 function referalReward(address payable account, uint256 amount) onlyOwner external {
@@ -178,4 +182,5 @@ function uniswapEthWithdraw(address payable account) onlyOwner external {
     uniswapEth = 0;
 }
 event Vesting(address indexed account, uint256 amount, uint8 blockId);
+event BuyTokens(address indexed account, uint8 indexed block, uint256 amount);
 }
