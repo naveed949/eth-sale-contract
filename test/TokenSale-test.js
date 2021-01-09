@@ -108,5 +108,61 @@ let tokenSale;
     }
      assert.equal(expected,msg)
    })
+   it('User can\'t buy tokens from invalid block e.g except 1-4 saleable blocks', async () => {
+    let user = accounts[6];
+    let eth = "7.65";
+    let block = "5";
+    let expected = 'invalid block'
+    let msg;
+    try {
+      tx = await tokenSale.buyTokens(block,{value: web3.utils.toWei(eth),from: user});
+    } catch (error) {
+      msg = error.reason;
+    }
+     assert.equal(expected,msg)
+   })
+   it('Issue tokens from nonSaleable adviser block, only owner can issue', async () => {
+    let owner = accounts[0];
+    let holder = accounts[5];
+    let tokens = "20";
+    let block = "5";
+      await tokenSale.issueNonSaleTokens(holder,tokens,block,{from: owner});
+ 
+     const balance = await tokenSale.balanceOfBlock.call(holder);
+     assert.equal(balance._amount.toString(), tokens)
+     assert.equal(balance._block.toString(), block)
+   })
+
+   it('End the sale, only owner can end the sale', async () => {
+    let owner = accounts[0];
+    
+     let tx =  await tokenSale.endSale({from: owner});
+
+     assert.equal(tx.logs[0].event, 'EndSale')
+   })
+   it('Tokens can\'t be bought after sale ended or before sale started', async () => {
+    let user = accounts[6];
+    let eth = "7.65";
+    let block = "4";
+    let expected = 'sale ended'
+    let msg;
+    try {
+      tx = await tokenSale.buyTokens(block,{value: web3.utils.toWei(eth),from: user});
+    } catch (error) {
+      msg = error.reason;
+    }
+     assert.equal(expected,msg)
+   })
+   it('Tokens can be issued from nonSaleable blocks after sale ended, only owner can add new users', async () => {
+    let owner = accounts[0];
+    let holder = accounts[6];
+    let tokens = "20";
+    let block = "6";
+      await tokenSale.issueNonSaleTokens(holder,tokens,block,{from: owner});
+ 
+     const balance = await tokenSale.balanceOfBlock.call(holder);
+     assert.equal(balance._amount.toString(), tokens)
+     assert.equal(balance._block.toString(), block)
+   })
 
 })

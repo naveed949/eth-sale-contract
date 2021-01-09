@@ -48,7 +48,7 @@ modifier isSaleStarted {
 // check if sale ended or not
 modifier isSaleble {
     require(now >= startTime,"sale not yet started");
-    require(!saleEnd,"Sale ended");
+    require(!saleEnd,"sale ended");
     _;
 }
 struct TokenBlock {
@@ -104,6 +104,8 @@ function endSale() onlyOwner external isSaleble returns (bool) {
         companyWallet.transfer(eths);
         uniswapEth = perCalc(address(this).balance,30,100);
         referalEthReward = perCalc(address(this).balance,25,1000);
+    
+    emit EndSale(endTime);
     return true;
 }
 /// Ability to add users after sale ended in nonsaleable blocks
@@ -114,6 +116,7 @@ function issueNonSaleTokens(address account,uint256 amount, uint8 _block) onlyOw
     balance[account] = tokens(amount,0,_block);
     saleTokens[_block].issued.add(amount);
     require(saleTokens[_block].supply >= saleTokens[_block].issued,"amount exceeds block supply");
+    emit Issue(account,amount,_block);
 }
 // to buy tokens
 function buyTokens(uint8 _block) isSaleble payable external {
@@ -129,7 +132,7 @@ function buyTokens(uint8 _block) isSaleble payable external {
     saleTokens[_block].issued.add(amount);
     require(saleTokens[_block].supply >= saleTokens[_block].issued,"amount exceeds supply");
 
-    emit BuyTokens(msg.sender,_block,amount);
+    emit Buy(msg.sender,_block,amount);
 }
 
 // to claim vested tokens
@@ -182,5 +185,7 @@ function uniswapEthWithdraw(address payable account) onlyOwner external {
     uniswapEth = 0;
 }
 event Vesting(address indexed account, uint256 amount, uint8 blockId);
-event BuyTokens(address indexed account, uint8 indexed block, uint256 amount);
+event Buy(address indexed account, uint8 indexed block, uint256 amount);
+event Issue(address indexed account,uint256 amount, uint8 indexed block);
+event EndSale(uint256 endTime);
 }
