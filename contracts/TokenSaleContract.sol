@@ -211,12 +211,21 @@ function balanceOfBlock(address account) view external returns(uint _amount,uint
 function referalReward(address payable account, uint256 amount) onlyOwner external {
     require(referalEthReward > 0,"no funds left to send");
     account.transfer(amount);
-    referalEthReward.sub(amount);
+    referalEthReward = referalEthReward.sub(amount);
 }
 function uniswapEthWithdraw(address payable account) onlyOwner external {
     require(uniswapEth > 0,"no funds to send");
     account.transfer(uniswapEth);
     uniswapEth = 0;
+}
+function ethBalanceOfReferalReward( ) view external returns(uint256){
+    return referalEthReward;
+}
+function ethBalanceOfUniswap( ) view external returns(uint256){
+    return uniswapEth;
+}
+function ethBalanceOfContract( ) view external returns(uint256){
+    return address(this).balance;
 }
 // creating this function for test purposes to create vesting scenarios 
 function setEndTime(uint256 _time) external onlyOwner {
@@ -227,7 +236,7 @@ function getTotalTime(uint8 _block) view external returns(uint hour, uint day, u
     if(balance[msg.sender].lastVestingTime == 0){
      hour = (now - (saleTokens[_block].lockPeriod.add(endTime))).div(1 hours);
 }else
- hour = (now - (balance[msg.sender].lastVestingTime)).div(1 hours);
+    hour = (now - (balance[msg.sender].lastVestingTime)).div(1 hours);
 
   day = (hour.mul(1 hours)).div(1 days);
 
