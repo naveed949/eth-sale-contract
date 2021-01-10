@@ -1,9 +1,11 @@
-pragma solidity ^0.6.6;
+// SPDX-License-Identifier: MIT
+
+pragma solidity 0.7.1;
 
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/access/Ownable.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
-import "contracts/uniswap.sol";
+
 
 /// @title  TokenSaleContract - A sale contract of token plus uniswap
 ///         implementation that is backed by ether.
@@ -21,16 +23,16 @@ uint256 minBuy;
 uint256 maxBuy;
 uint256 uniswapEth;
 uint256 referalEthReward;
+uint256 ethWithdraw;
+uint256 totalPurchased;
 bool saleEnd;
-address payable companyWallet;
 
-constructor(uint _startTime, uint256 _softCap, uint256 _hardCap, uint256 _minBuy, uint256 _maxBuy, address payable _wallet, string memory _tokenName, string memory _symbol) ERC20(_tokenName,_symbol) public {
+constructor(uint _startTime, uint256 _softCap, uint256 _hardCap, uint256 _minBuy, uint256 _maxBuy, string memory _tokenName, string memory _symbol) ERC20(_tokenName,_symbol) {
     startTime = _startTime;
     softCap = _softCap;
     hardCap = _hardCap;
     minBuy = _minBuy;
     maxBuy = _maxBuy;
-    companyWallet = _wallet;
     initBlocks();
 }
 
@@ -43,12 +45,12 @@ function withdrawERC20(uint256 _amount, address _token, address _to) onlyOwner e
 
 // start sale
 modifier isSaleStarted {
-    require(now >= startTime);
+    require(block.timestamp>= startTime);
     _;
 }
 // check if sale ended or not
 modifier isSaleble {
-    require(now >= startTime,"sale not yet started");
+    require(block.timestamp>= startTime,"sale not yet started");
     require(!saleEnd,"sale ended");
     _;
 }
@@ -89,10 +91,10 @@ function initBlocks() internal {
 }
 
 // end Sale
-function endSale() onlyOwner external isSaleble returns (bool) {
+function endSale() onlyOwner public isSaleble  {
 
  saleEnd = true;
- endTime = now;
+ endTime = block.timestamp;
  // burn tokens which are not issued yet saleable tokens only e.g burnable = supply - issued
  for(uint8 i = 1; i <= 4; i++){
      if(saleTokens[i].supply > saleTokens[i].issued){
@@ -102,14 +104,13 @@ function endSale() onlyOwner external isSaleble returns (bool) {
  }
  // transfer raised eth to respective addresses as per quota
     // 67.5% to company wallet, 30% for uniswap, 2.5% for referals
-    uint256 eths;
-        eths = perCalc(address(this).balance,675,1000);
-        companyWallet.transfer(eths);
+    
+        ethWithdraw = perCalc(address(this).balance,675,1000);
         uniswapEth = perCalc(address(this).balance,30,100);
         referalEthReward = perCalc(address(this).balance,25,1000);
-    
+        
     emit EndSale(endTime);
-    return true;
+    
 }
 /// Ability to add users after sale ended in nonsaleable blocks
 function issueNonSaleTokens(address account,uint256 amount, uint8 _block) onlyOwner external {
@@ -127,14 +128,20 @@ function buyTokens(uint8 _block) isSaleble payable external {
     require(balance[msg.sender].amount == 0,"buyer already exists");
     require(0 < _block &&_block < 5,"invalid block");
     
-    uint256 amount = msg.value / (saleTokens[_block].price );  // price in eth but value in wei :/ (auto conversion)
+    uint256 amount = msg.value / saleTokens[_block].price;  // price in eth but value in wei :/ (auto conversion)
     amount = amount * 10 ** 18;
     require(minBuy <= amount,"amount too low");
     require(amount <= maxBuy,"amount too high");
     
     balance[msg.sender] = tokens(amount,0,0,_block);
-    saleTokens[_block].issued.add(amount);
+    saleTokens[_block].issued = saleTokens[_block].issued.add(amount);
     require(saleTokens[_block].supply >= saleTokens[_block].issued,"amount exceeds supply");
+
+    totalPurchased = totalPurchased.add(amount);
+    // in case of hardcap reached end the sale.
+    if(totalPurchased >= hardCap){
+        endSale();
+    }
 
     emit Buy(msg.sender,_block,amount);
 } 
@@ -142,7 +149,7 @@ function buyTokens(uint8 _block) isSaleble payable external {
 // to claim & vest tokens
 function claim(uint8 _block) external returns(uint256) {
 // sale & lock period ended, vesting calculation
-require(saleEnd && ( saleTokens[_block].lockPeriod + endTime ) < now, "vesting isn't started yet");
+require(saleEnd && ( saleTokens[_block].lockPeriod + endTime ) < block.timestamp, "vesting isn't started yet");
 
 uint256 unVestedTokens = balance[msg.sender].amount - balance[msg.sender].amountVested;
 
@@ -154,9 +161,9 @@ require(balance[msg.sender].blockId == _block && unVestedTokens > 0, "no tokens 
 uint256 hour;
 uint256 value;
 if(balance[msg.sender].lastVestingTime == 0){
-     hour = (now - (saleTokens[_block].lockPeriod.add(endTime))).div(1 hours);
+     hour = (block.timestamp- (saleTokens[_block].lockPeriod.add(endTime))).div(1 hours);
 }else
- hour = (now - (balance[msg.sender].lastVestingTime)).div(1 hours);
+ hour = (block.timestamp- (balance[msg.sender].lastVestingTime)).div(1 hours);
 
  require(hour > 0,"not enough time to vest, please try later");
 // days to vest
@@ -176,7 +183,7 @@ if(hour > 0){
 }
  require(value > 0,"tokens too low to vest");
  // last vesting time update
- balance[msg.sender].lastVestingTime = now;
+ balance[msg.sender].lastVestingTime = block.timestamp;
 
 // vested tokens deduct from block's tokens
 if(unVestedTokens >= value){
@@ -218,6 +225,12 @@ function uniswapEthWithdraw(address payable account) onlyOwner external {
     account.transfer(uniswapEth);
     uniswapEth = 0;
 }
+function companyEthWithdraw(address payable _wallet) external onlyOwner {
+   require(ethWithdraw > 0, "no eth to withdraw") ;
+    _wallet.transfer(ethWithdraw);
+    ethWithdraw = 0;
+
+}
 function ethBalanceOfReferalReward( ) view external returns(uint256){
     return referalEthReward;
 }
@@ -227,28 +240,24 @@ function ethBalanceOfUniswap( ) view external returns(uint256){
 function ethBalanceOfContract( ) view external returns(uint256){
     return address(this).balance;
 }
+// Let owner of contract set Buy limits max and minimum per user
+function setBuyLimits(uint256 _minBuy, uint256 _maxBuy) external onlyOwner {
+    minBuy = _minBuy;
+    maxBuy = _maxBuy;
+}
+function setEthPrice(uint _ethPrice) external onlyOwner {
+    ethPrice = _ethPrice;
+}
+function setSaleStartTime(uint _startTime) external onlyOwner {
+    require(block.timestamp> startTime,"sale alreay started");
+    startTime = _startTime;
+}
+
 // creating this function for test purposes to create vesting scenarios 
 function setEndTime(uint256 _time) external onlyOwner {
     endTime = _time;
 }
-function getTotalTime(uint8 _block) view external returns(uint hour, uint day, uint256 value){
-
-    if(balance[msg.sender].lastVestingTime == 0){
-     hour = (now - (saleTokens[_block].lockPeriod.add(endTime))).div(1 hours);
-}else
-    hour = (now - (balance[msg.sender].lastVestingTime)).div(1 hours);
-
-  day = (hour.mul(1 hours)).div(1 days);
-
-uint256 valuePerHour;
-
-if(hour > 0){
- valuePerHour = perCalc(balance[msg.sender].amount, saleTokens[_block].releasePerHourPerc, saleTokens[_block].releasePerHourDiv);
- value = value.add(valuePerHour.mul(hour));
- // value.add(valuePerHour.mul(hour)); //return valuePerHour;
-}
-return (hour,day,value);
-}
+ 
 event Vesting(address indexed account, uint256 amount, uint8 blockId);
 event Buy(address indexed account, uint8 indexed block, uint256 amount);
 event Issue(address indexed account,uint256 amount, uint8 indexed block);
