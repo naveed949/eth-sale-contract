@@ -1,19 +1,23 @@
 const TokenSale = artifacts.require('TokenSale')
+const ERC20 = artifacts.require('erc20Token')
 const {getTimestamp} = require("./utils/utils.js");
 
 contract('TokenSale', accounts => {
 let tokenSale; 
+let tokenContract;
     let _startTime = Math.floor(new Date().getTime() / 1000); //seconds
     let _softCap = web3.utils.toWei('1000');
     let _hardCap = web3.utils.toWei("5000");
-    let _minBuy = web3.utils.toWei("50");
+    let _minBuy = web3.utils.toWei("0.15");
     let _maxBuy = web3.utils.toWei("500");
-    
+    let _companyWallet = accounts[0]
+    let _ethPrice = '60000'  // price in Pennies ($ * 100)
     let _tokenName = 'MOD';
     let _symbol = 'MOD';
   before(async () => {
-   
-    tokenSale = await TokenSale.new(_startTime,_softCap,_hardCap,_minBuy,_maxBuy,_tokenName,_symbol);
+    tokenSale = await TokenSale.new(_startTime,_softCap,_hardCap,_minBuy,_maxBuy,_companyWallet, _ethPrice);
+   // tokenContract = await ERC20.new(_tokenName, _symbol, tokenSale)
+   console.log(tokenSale.toString())
   })
 
   it('contract deployed & initialized', async () => {
@@ -344,6 +348,19 @@ it('Uniswap liquidity 30.5% ETH withdrawal(by only owner) for manual uniswap lis
        // block#4
    block = await tokenSale.saleTokens.call(4);
    assert.equal(block.supply.toString(), block.issued.toString())
+    
+ })
+ it('Bogus block should not be allowed to vest', async () => {
+  
+  let holder = accounts[2];
+  let block = 10;
+  try {
+    let tx = await tokenSale.claim(block,{from: holder});
+       
+ } catch (error) {
+   console.log(error.reason)
+   assert.equal(error.reason,'no tokens to vest')
+ }
     
  })
 

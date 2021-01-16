@@ -4,12 +4,13 @@ pragma solidity 0.7.1;
 
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/access/Ownable.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
+import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
+import "./IToken.sol";
 
 
 /// @title  TokenSaleContract - A sale contract of token plus uniswap
 ///         implementation that is backed by ether.
-contract TokenSale is Ownable, ERC20 {
+contract TokenSale is Ownable {
 
 using SafeMath for uint256;
 
@@ -27,19 +28,24 @@ uint256 ethWithdraw;
 uint256 totalPurchased;
 bool saleEnd;
 
-constructor(uint _startTime, uint256 _softCap, uint256 _hardCap, uint256 _minBuy, uint256 _maxBuy, string memory _tokenName, string memory _symbol) ERC20(_tokenName,_symbol) {
+address payable companyWallet;
+IToken  erc20Token;
+
+constructor(uint _startTime, uint256 _softCap, uint256 _hardCap, uint256 _minBuy, uint256 _maxBuy, address payable _companyWallet, uint256 _ethPrice) {
     startTime = _startTime;
     softCap = _softCap;
     hardCap = _hardCap;
     minBuy = _minBuy;
     maxBuy = _maxBuy;
+    companyWallet = _companyWallet;
+    ethPrice = _ethPrice;
     initBlocks();
 }
 
 // Allow other ERC20 tokens to be withdrawn from contract in case of accidental deposit, except
 // for the token being sold.
 function withdrawERC20(uint256 _amount, address _token, address _to) onlyOwner external {
-    ERC20 erc20 =  ERC20(_token);
+    IERC20 erc20 =  IERC20(_token);
     erc20.transfer(_to, _amount);
 }
 
@@ -64,11 +70,10 @@ struct TokenBlock {
     uint releasePerHourDiv;
     uint price;
     uint256 issued;
-  //   mapping(address => uint) holders;
 }
 mapping(uint8 => TokenBlock) public saleTokens;
 mapping(uint8 => TokenBlock) nonsaleTokens;
-
+mapping(address => address payable) referals;
 struct tokens {
     uint256 amount;
     uint256 lastVestingTime;
@@ -78,16 +83,16 @@ struct tokens {
 mapping(address => tokens) balance;
 // init blocks 1-4 saleable & 5 nonsaleable blocks
 function initBlocks() internal {
-    // setting supply in ehters just to ensure 18 decimals
-    saleTokens[1] = TokenBlock(1000000 ether,0 days, 30 days,334,10000,1391666667,1000000000000,0.15 ether,0);
-    saleTokens[2] = TokenBlock(2000000 ether,0 days, 14 days,715,10000,2979166667,1000000000000,0.20 ether,0);
-    saleTokens[3] = TokenBlock(3000000 ether,0 days, 7 days,143,1000,5958333333,1000000000000,0.25 ether,0);
-    saleTokens[4] = TokenBlock(4000000 ether,0 days, 0 days,100,100,41666666667,1000000000000,0.30 ether,0);
-    saleTokens[5] = TokenBlock(1000000 ether,30 days, 180 days,5479452055,1000000000000,228310502,1000000000000,0 ether,0); // advisors block
-    saleTokens[6] = TokenBlock(2000000 ether,0 days, 365 days,2739726027,1000000000000,114155251,1000000000000,0 ether,0); // marketing/staking block
-    saleTokens[7] = TokenBlock(2000000 ether,180 days, 3*365 days,1,1000,41666667,1000000000000,0 ether,0); // team block
-    saleTokens[8] = TokenBlock(500000 ether,0 days, 365 days,2739726027,1000000000000,114155251,1000000000000,0 ether,0); // bounty block
-    saleTokens[9] = TokenBlock(500000 ether,180 days, 180 days,108,10000,45,100000,0 ether,0); // airdrops block
+    // setting supply in ehters just to ensure 18 decimals, price in pennies
+    saleTokens[1] = TokenBlock(1000000 ether,0 days, 30 days,334,10000,1391666667,1000000000000,15 ,0);
+    saleTokens[2] = TokenBlock(2000000 ether,0 days, 14 days,715,10000,2979166667,1000000000000,20 ,0);
+    saleTokens[3] = TokenBlock(3000000 ether,0 days, 7 days,143,1000,5958333333,1000000000000,25 ,0);
+    saleTokens[4] = TokenBlock(4000000 ether,0 days, 0 days,100,100,41666666667,1000000000000,30 ,0);
+    saleTokens[5] = TokenBlock(1000000 ether,30 days, 180 days,5479452055,1000000000000,228310502,1000000000000,0 ,0); // advisors block
+    saleTokens[6] = TokenBlock(2000000 ether,0 days, 365 days,2739726027,1000000000000,114155251,1000000000000,0 ,0); // marketing/staking block
+    saleTokens[7] = TokenBlock(2000000 ether,180 days, 3*365 days,1,1000,41666667,1000000000000,0 ,0); // team block
+    saleTokens[8] = TokenBlock(500000 ether,0 days, 365 days,2739726027,1000000000000,114155251,1000000000000,0 ,0); // bounty block
+    saleTokens[9] = TokenBlock(500000 ether,180 days, 180 days,108,10000,45,100000,0 ,0); // airdrops block
 }
 
 // end Sale
@@ -95,19 +100,18 @@ function endSale() onlyOwner public isSaleble  {
 
  saleEnd = true;
  endTime = block.timestamp;
+ uint256 _toBeBurned;
  // burn tokens which are not issued yet saleable tokens only e.g burnable = supply - issued
  for(uint8 i = 1; i <= 4; i++){
      if(saleTokens[i].supply > saleTokens[i].issued){
+         _toBeBurned = _toBeBurned.add(saleTokens[i].supply - saleTokens[i].issued );
          // burning extra tokens
          saleTokens[i].supply = saleTokens[i].issued;
+         
      }
  }
- // transfer raised eth to respective addresses as per quota
-    // 67.5% to company wallet, 30% for uniswap, 2.5% for referals
-    
-        ethWithdraw = perCalc(address(this).balance,675,1000);
-        uniswapEth = perCalc(address(this).balance,30,100);
-        referalEthReward = perCalc(address(this).balance,25,1000);
+ erc20Token.burn(_toBeBurned);
+ 
         
     emit EndSale(endTime);
     
@@ -125,13 +129,18 @@ function issueNonSaleTokens(address account,uint256 amount, uint8 _block) onlyOw
 // to buy tokens
 function buyTokens(uint8 _block) isSaleble payable external {
     
+    require(minBuy <= msg.value,"eth sent too low");
+    require(msg.value <= maxBuy,"eth sent too high");
+
     require(balance[msg.sender].amount == 0,"buyer already exists");
     require(0 < _block &&_block < 5,"invalid block");
     
-    uint256 amount = msg.value / saleTokens[_block].price;  // price in eth but value in wei :/ (auto conversion)
+    
+    uint256 tokensPerEth = ethPrice.div(saleTokens[_block].price);
+    uint256 amount = tokensPerEth.mul(msg.value).div(1 ether);
+
+   // uint256 amount = msg.value / saleTokens[_block].price;  // price in eth but value in wei :/ (auto conversion)
     amount = amount * 10 ** 18;
-    require(minBuy <= amount,"amount too low");
-    require(amount <= maxBuy,"amount too high");
     
     balance[msg.sender] = tokens(amount,0,0,_block);
     saleTokens[_block].issued = saleTokens[_block].issued.add(amount);
@@ -147,13 +156,13 @@ function buyTokens(uint8 _block) isSaleble payable external {
 } 
 
 // to claim & vest tokens
-function claim(uint8 _block) external returns(uint256) {
+function claim() external returns(uint256) {
 // sale & lock period ended, vesting calculation
+uint8 _block = balance[msg.sender].blockId;
 require(saleEnd && ( saleTokens[_block].lockPeriod + endTime ) < block.timestamp, "vesting isn't started yet");
-
 uint256 unVestedTokens = balance[msg.sender].amount - balance[msg.sender].amountVested;
+require( unVestedTokens > 0, "no tokens to vest");
 
-require(balance[msg.sender].blockId == _block && unVestedTokens > 0, "no tokens to vest");
 
 // save last vested time and then caclulate current with it to find how much to be vested now and then update last vested time
 // calculate no. hours. obtain 1 hour amount and multiply with total hours
@@ -201,7 +210,7 @@ if(unVestedTokens >= value){
 }
 
 // add tokens to erc20 supply as vested tokens to be consumed and used as user wants.
-_mint(msg.sender, value);
+erc20Token.transfer(msg.sender, value);
 // emit token vested
 emit Vesting(msg.sender,value,_block);
 }
@@ -212,48 +221,53 @@ function perCalc(uint amount, uint percentage, uint div) pure public returns(uin
    // require(value > 0, "tokens too low to vest");
     return value;
 }
-function balanceOfBlock(address account) view external returns(uint _amount,uint _block){
-    return (balance[account].amount,balance[account].blockId);
+function balanceOfBlock(address account) view external returns(uint _amount,uint _block, uint256 _claimed){
+    return (balance[account].amount,balance[account].blockId, balance[account].amountVested);
 }
-function referalReward(address payable account, uint256 amount) onlyOwner external {
-    require(referalEthReward > 0,"no funds left to send");
-    account.transfer(amount);
-    referalEthReward = referalEthReward.sub(amount);
-}
+
 function uniswapEthWithdraw(address payable account) onlyOwner external {
-    require(uniswapEth > 0,"no funds to send");
+    require(uniswapEth > 0,"no funds to transfer");
     account.transfer(uniswapEth);
     uniswapEth = 0;
 }
-function companyEthWithdraw(address payable _wallet) external onlyOwner {
-   require(ethWithdraw > 0, "no eth to withdraw") ;
-    _wallet.transfer(ethWithdraw);
-    ethWithdraw = 0;
 
-}
-function ethBalanceOfReferalReward( ) view external returns(uint256){
-    return referalEthReward;
-}
 function ethBalanceOfUniswap( ) view external returns(uint256){
     return uniswapEth;
 }
 function ethBalanceOfContract( ) view external returns(uint256){
     return address(this).balance;
 }
-// Let owner of contract set Buy limits max and minimum per user
-function setBuyLimits(uint256 _minBuy, uint256 _maxBuy) external onlyOwner {
-    minBuy = _minBuy;
-    maxBuy = _maxBuy;
+function sendEthAsPerQouta() internal {
+
+    // transfer raised eth to respective addresses as per quota
+    // 67.5% to company wallet, 30% for uniswap, 2.5% for referals
+    
+        uint256 _ethWithdraw = perCalc(msg.value,675,1000);
+                uniswapEth = perCalc(msg.value,30,100);
+        uint256 _referalEthReward = perCalc(msg.value,25,1000);
+
+    // transferring eth
+    companyWallet.transfer(_ethWithdraw);
+    // to referrer and if not then transfer to company wallet
+    if(referals[msg.sender]== msg.sender){
+        // send amount to referal
+        referals[msg.sender].transfer(_referalEthReward);
+
+        emit ReferalReward(referals[msg.sender], _referalEthReward);
+    }else{
+        companyWallet.transfer(_referalEthReward);
+    }
+
 }
-function setEthPrice(uint _ethPrice) external onlyOwner {
-    ethPrice = _ethPrice;
+function addRefferal(address payable _referee) external {
+    require(referals[_referee]== address(0),'referee already exists');
+    referals[_referee]= msg.sender;
 }
-function setSaleStartTime(uint _startTime) external onlyOwner {
-    require(block.timestamp> startTime,"sale alreay started");
-    startTime = _startTime;
+function setTokenAddress(address _tokenContract) external onlyOwner {
+    erc20Token = IToken(_tokenContract);
 }
 
-// creating this function for test purposes to create vesting scenarios 
+// creating this function for test purposes to create different vesting scenarios 
 function setEndTime(uint256 _time) external onlyOwner {
     endTime = _time;
 }
@@ -262,4 +276,5 @@ event Vesting(address indexed account, uint256 amount, uint8 blockId);
 event Buy(address indexed account, uint8 indexed block, uint256 amount);
 event Issue(address indexed account,uint256 amount, uint8 indexed block);
 event EndSale(uint256 endTime);
+event ReferalReward(address indexed to, uint256 amount);
 }
