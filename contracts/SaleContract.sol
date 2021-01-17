@@ -15,17 +15,15 @@ contract TokenSale is Ownable {
 using SafeMath for uint256;
 
 
-uint256 startTime;
+uint256 public startTime;
 uint256 public endTime;
-uint256 softCap;
-uint256 hardCap;
-uint256 ethPrice;
-uint256 minBuy;
-uint256 maxBuy;
+uint256 public softCap;
+uint256 public hardCap;
+uint256 public ethPrice;
+uint256 public minBuy;
+uint256 public maxBuy;
 uint256 uniswapEth;
-uint256 referalEthReward;
-uint256 ethWithdraw;
-uint256 totalPurchased;
+uint256 public totalEthRaised;
 bool saleEnd;
 
 address payable companyWallet;
@@ -83,22 +81,19 @@ struct tokens {
 mapping(address => tokens) balance;
 // init blocks 1-4 saleable & 5 nonsaleable blocks
 function initBlocks() internal {
-    // setting supply in ehters just to ensure 18 decimals, price in pennies
-    saleTokens[1] = TokenBlock(1000000 ether,0 days, 30 days,334,10000,1391666667,1000000000000,15 ,0);
+    // setting supply in ehters just to ensure 18 decimals, price in pennies 
+    saleTokens[1] = TokenBlock(1000000 ether,0 days, 30 days,334,10000,1391666667,1000000000000,15 ,0); // private block
     saleTokens[2] = TokenBlock(2000000 ether,0 days, 14 days,715,10000,2979166667,1000000000000,20 ,0);
     saleTokens[3] = TokenBlock(3000000 ether,0 days, 7 days,143,1000,5958333333,1000000000000,25 ,0);
-    saleTokens[4] = TokenBlock(4000000 ether,0 days, 0 days,100,100,41666666667,1000000000000,30 ,0);
+    saleTokens[4] = TokenBlock(4000000 ether,0 days, 0 days,100,100,100,100,30 ,0);
     saleTokens[5] = TokenBlock(1000000 ether,30 days, 180 days,5479452055,1000000000000,228310502,1000000000000,0 ,0); // advisors block
-    saleTokens[6] = TokenBlock(2000000 ether,0 days, 365 days,2739726027,1000000000000,114155251,1000000000000,0 ,0); // marketing/staking block
-    saleTokens[7] = TokenBlock(2000000 ether,180 days, 3*365 days,1,1000,41666667,1000000000000,0 ,0); // team block
-    saleTokens[8] = TokenBlock(500000 ether,0 days, 365 days,2739726027,1000000000000,114155251,1000000000000,0 ,0); // bounty block
-    saleTokens[9] = TokenBlock(500000 ether,180 days, 180 days,108,10000,45,100000,0 ,0); // airdrops block
+    saleTokens[6] = TokenBlock(1000000 ether,0 days, 365 days,2739726027,1000000000000,114155251,1000000000000,0 ,0); // marketing/staking block
+    saleTokens[7] = TokenBlock(1500000 ether,180 days, 3*365 days,1,1000,41666667,1000000000000,0 ,0); // team block
+    saleTokens[8] = TokenBlock(1500000 ether,30 days, 3*365 days,1,1000,41666667,1000000000000,0 ,0); // foundation block
+    saleTokens[9] = TokenBlock(1500000 ether,90 days, 180 days,5479452055,1000000000000,228310502,1000000000000,0 ,0); // seed block
 }
-
-// end Sale
-function endSale() onlyOwner public isSaleble  {
-
- saleEnd = true;
+function _endSale() internal {
+  saleEnd = true;
  endTime = block.timestamp;
  uint256 _toBeBurned;
  // burn tokens which are not issued yet saleable tokens only e.g burnable = supply - issued
@@ -113,27 +108,41 @@ function endSale() onlyOwner public isSaleble  {
  erc20Token.burn(_toBeBurned);
  
         
-    emit EndSale(endTime);
+    emit EndSale(endTime);  
+}
+// end Sale
+function endSale() onlyOwner public isSaleble  {
+
+ _endSale();
     
 }
-/// Ability to add users after sale ended in nonsaleable blocks
-function issueNonSaleTokens(address account,uint256 amount, uint8 _block) onlyOwner external {
-    require(balance[account].amount == 0,"buyer already exists");
-    require(4 < _block &&_block < 10,"invalid block"); 
+/// Ability to add users after sale ended in nonsaleable blocks, also multiple addresses with amounts can be added
+function issueNonSaleTokens(address[] memory account,uint256[] memory amount, uint8 _block) onlyOwner external {
+    
+    require(_block == 1 || (4 < _block &&_block < 10),"invalid block");
+    // only block#5 adviser allowed to be added new accounts after sale ended.
+    if(_block != 5){
+        require(!saleEnd,"sale ended");
+    }
+    require(account.length == amount.length,"lists mismatched");
+    for(uint8 i=0; i < account.length; i++){
 
-    balance[account] = tokens(amount,0,0,_block);
-    saleTokens[_block].issued.add(amount);
+    require(balance[account[i]].amount == 0,"account already exists");
+    balance[account[i]] = tokens(amount[i],0,0,_block);
+    saleTokens[_block].issued.add(amount[i]);
     require(saleTokens[_block].supply >= saleTokens[_block].issued,"amount exceeds block supply");
-    emit Issue(account,amount,_block);
+    emit Issue(account[i],amount[i],_block);
+     }
 }
 // to buy tokens
 function buyTokens(uint8 _block) isSaleble payable external {
     
+    require(1 < _block &&_block < 5,"invalid block"); //excluding block#1 which private now
     require(minBuy <= msg.value,"eth sent too low");
     require(msg.value <= maxBuy,"eth sent too high");
 
     require(balance[msg.sender].amount == 0,"buyer already exists");
-    require(0 < _block &&_block < 5,"invalid block");
+    
     
     
     uint256 tokensPerEth = ethPrice.div(saleTokens[_block].price);
@@ -146,10 +155,11 @@ function buyTokens(uint8 _block) isSaleble payable external {
     saleTokens[_block].issued = saleTokens[_block].issued.add(amount);
     require(saleTokens[_block].supply >= saleTokens[_block].issued,"amount exceeds supply");
 
-    totalPurchased = totalPurchased.add(amount);
+    totalEthRaised = totalEthRaised.add(msg.value);
+    _sendEthAsPerQouta();
     // in case of hardcap reached end the sale.
-    if(totalPurchased >= hardCap){
-        endSale();
+    if(totalEthRaised >= hardCap){
+        _endSale();
     }
 
     emit Buy(msg.sender,_block,amount);
@@ -237,39 +247,62 @@ function ethBalanceOfUniswap( ) view external returns(uint256){
 function ethBalanceOfContract( ) view external returns(uint256){
     return address(this).balance;
 }
-function sendEthAsPerQouta() internal {
+function _sendEthAsPerQouta() internal {
 
     // transfer raised eth to respective addresses as per quota
     // 67.5% to company wallet, 30% for uniswap, 2.5% for referals
     
         uint256 _ethWithdraw = perCalc(msg.value,675,1000);
-                uniswapEth = perCalc(msg.value,30,100);
+                uniswapEth = uniswapEth.add(perCalc(msg.value,30,100));
         uint256 _referalEthReward = perCalc(msg.value,25,1000);
 
     // transferring eth
     companyWallet.transfer(_ethWithdraw);
     // to referrer and if not then transfer to company wallet
-    if(referals[msg.sender]== msg.sender){
+    if(referals[msg.sender] != address(0)){
         // send amount to referal
         referals[msg.sender].transfer(_referalEthReward);
 
         emit ReferalReward(referals[msg.sender], _referalEthReward);
     }else{
         companyWallet.transfer(_referalEthReward);
+        emit ReferalReward(companyWallet, _referalEthReward);
     }
 
 }
 function addRefferal(address payable _referee) external {
     require(referals[_referee]== address(0),'referee already exists');
     referals[_referee]= msg.sender;
+    emit ReferalAdded(referals[_referee], _referee);
 }
 function setTokenAddress(address _tokenContract) external onlyOwner {
     erc20Token = IToken(_tokenContract);
+    emit TokenContract(erc20Token);
 }
 
 // creating this function for test purposes to create different vesting scenarios 
 function setEndTime(uint256 _time) external onlyOwner {
     endTime = _time;
+}
+function transfer2(address to, uint256 amount) external {
+    erc20Token.transfer(to,amount);
+}
+function getBurnt() external view returns (uint256) {
+    uint256 _toBeBurned;
+    uint256 _value;
+ // burn tokens which are not issued yet saleable tokens only e.g burnable = supply - issued
+ for(uint8 i = 1; i <= 4; i++){
+     if(saleTokens[i].supply > saleTokens[i].issued){
+        _value = saleTokens[i].supply - saleTokens[i].issued;
+        _toBeBurned = _toBeBurned.add( _value );
+         
+         
+         // burning extra tokens
+        // saleTokens[i].supply = saleTokens[i].issued;
+         
+     }
+ }
+ return _toBeBurned;
 }
  
 event Vesting(address indexed account, uint256 amount, uint8 blockId);
@@ -277,4 +310,6 @@ event Buy(address indexed account, uint8 indexed block, uint256 amount);
 event Issue(address indexed account,uint256 amount, uint8 indexed block);
 event EndSale(uint256 endTime);
 event ReferalReward(address indexed to, uint256 amount);
+event ReferalAdded(address indexed referer, address referee);
+event TokenContract(IToken tokenContract);
 }

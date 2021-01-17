@@ -6,8 +6,8 @@ contract('TokenSale', accounts => {
 let tokenSale; 
 let tokenContract;
     let _startTime = Math.floor(new Date().getTime() / 1000); //seconds
-    let _softCap = web3.utils.toWei('1000');
-    let _hardCap = web3.utils.toWei("5000");
+    let _softCap = web3.utils.toWei('10');
+    let _hardCap = web3.utils.toWei("100");
     let _minBuy = web3.utils.toWei("0.15");
     let _maxBuy = web3.utils.toWei("500");
     let _companyWallet = accounts[0]
@@ -15,38 +15,58 @@ let tokenContract;
     let _tokenName = 'MOD';
     let _symbol = 'MOD';
   before(async () => {
+    // first of all deploy salecontract
     tokenSale = await TokenSale.new(_startTime,_softCap,_hardCap,_minBuy,_maxBuy,_companyWallet, _ethPrice);
-   // tokenContract = await ERC20.new(_tokenName, _symbol, tokenSale)
-   console.log(tokenSale.toString())
+    // pass salecontract's address to erc20 contract, so it can mint tokens and send to salecontract
+    tokenContract = await ERC20.new(_tokenName, _symbol, tokenSale.address)
+    
+   
   })
 
-  it('contract deployed & initialized', async () => {
-    const name = await tokenSale.name.call()
+  it('token & sale contracts deployed & initialized', async () => {
+    // set tokencontract's address in salecontract, so it can manage tokens durring sale
+    let tx = await tokenSale.setTokenAddress(tokenContract.address,{from:accounts[0]});
+    assert.equal(tx.logs[0].event, 'TokenContract');
+    assert.equal(tx.logs[0].args.tokenContract,tokenContract.address)
+    const name = await tokenContract.name.call()
     assert.equal(name, _tokenName)
-    const symbol = await tokenSale.symbol.call()
+    const symbol = await tokenContract.symbol.call()
     assert.equal(symbol, _symbol)
   })
-  it('Buy Tokens of block#1', async () => {
+  it('Issue Tokens of block#1 private block', async () => {
    // const block = await tokenSale.saleTokens.call(1);
    // console.log(block.price.toString())
-    let user = accounts[1];
-    let eth = "7.5";
-    let tokensPurchased = "50";
+    let owner = accounts[0]
+    let user = [accounts[1]];
+    
+    let tokens = [web3.utils.toWei("30000")];
     let block = "1";
-     await tokenSale.buyTokens(block,{value: web3.utils.toWei(eth),from: user});
+    let fromWei = web3.utils.fromWei;
+    let tx = await tokenSale.issueNonSaleTokens(user, tokens, block,{from: owner});
 
-    const balance = await tokenSale.balanceOfBlock.call(user);
-    assert.equal(web3.utils.fromWei(balance._amount), tokensPurchased)
+    assert.equal(tx.logs[0].event, 'Issue');
+    assert.equal(tx.logs[0].args.account,user[0])
+    assert.equal(tx.logs[0].args.block.toString(),block)
+    assert.equal(fromWei(tx.logs[0].args.amount),fromWei(tokens[0]))
+
+    const balance = await tokenSale.balanceOfBlock.call(user[0]);
+    assert.equal(web3.utils.fromWei(balance._amount), from(tokens[0]));
     assert.equal(balance._block.toString(), block)
     
   })
   it('Buy Tokens of block#2', async () => {
     let user = accounts[2];
     let eth = "12";
-    let tokensPurchased = "60";
+    let tokensPurchased = "36000";
     let block = "2";
-      await tokenSale.buyTokens(block,{value: web3.utils.toWei(eth),from: user});
- 
+    let tx =  await tokenSale.buyTokens(block,{value: web3.utils.toWei(eth),from: user});
+
+      assert.equal(tx.logs[0].event, 'ReferalReward');
+      assert.equal(tx.logs[0].args.to,_companyWallet)
+      console.log(fromWei(tx.logs[0].args.amount)+"::"+(eth * 25)/1000)
+      assert.equal(fromWei(tx.logs[0].args.amount),(eth * 25)/1000)
+
+
      const balance = await tokenSale.balanceOfBlock.call(user);
      assert.equal(web3.utils.fromWei(balance._amount), tokensPurchased)
      assert.equal(balance._block.toString(), block)
@@ -54,7 +74,7 @@ let tokenContract;
    it('Buy Tokens of block#3', async () => {
     let user = accounts[3];
     let eth = "20";
-    let tokensPurchased = "80";
+    let tokensPurchased = "48000";
     let block = "3";
       await tokenSale.buyTokens(block,{value: web3.utils.toWei(eth),from: user});
  
@@ -65,7 +85,7 @@ let tokenContract;
    it('Buy Tokens of block#4', async () => {
     let user = accounts[4];
     let eth = "18";
-    let tokensPurchased = "60";
+    let tokensPurchased = "36000";
     let block = "4";
       await tokenSale.buyTokens(block,{value: web3.utils.toWei(eth),from: user});
  
@@ -88,9 +108,9 @@ let tokenContract;
    })
    it('A user can\'t buy tokens below set minimum Buy limit', async () => {
     let user = accounts[5];
-    let eth = "1.3";
+    let eth = "0.14";
     let block = "1";
-    let expected = 'amount too low'
+    let expected = 'eth sent too low'
     let msg;
     try {
       tx = await tokenSale.buyTokens(block,{value: web3.utils.toWei(eth),from: user});
@@ -101,9 +121,9 @@ let tokenContract;
    })
    it('A user can\'t buy more tokens then set maximum Buy limit', async () => {
     let user = accounts[5];
-    let eth = "75.5";
+    let eth = "501";
     let block = "1";
-    let expected = 'amount too high'
+    let expected = 'eth sent too high'
     let msg;
     try {
       tx = await tokenSale.buyTokens(block,{value: web3.utils.toWei(eth),from: user});
@@ -126,14 +146,20 @@ let tokenContract;
      assert.equal(expected,msg)
    })
    it('Issue tokens from nonSaleable adviser block, only owner can issue', async () => {
+    let toWei = web3.utils.toWei;
+    let fromWei = web3.utils.fromWei;
     let owner = accounts[0];
-    let holder = accounts[5];
-    let tokens = "90";
+    let holders = [accounts[5],accounts[8],accounts[9]];
+    let tokens = [toWei("90"),toWei("95"),toWei("100")];
     let block = "5";
-      await tokenSale.issueNonSaleTokens(holder,web3.utils.toWei(tokens),block,{from: owner});
+    let tx = await tokenSale.issueNonSaleTokens(holders,tokens,block,{from: owner});
  
-     const balance = await tokenSale.balanceOfBlock.call(holder);
-     assert.equal(web3.utils.fromWei(balance._amount), tokens)
+     const balance = await tokenSale.balanceOfBlock.call(holders[0]);
+     assert.equal(fromWei(balance._amount), fromWei(tokens[0]))
+     const balance1 = await tokenSale.balanceOfBlock.call(holders[1]);
+     assert.equal(fromWei(balance1._amount), fromWei(tokens[1]))
+     const balance2 = await tokenSale.balanceOfBlock.call(holders[2]);
+     assert.equal(fromWei(balance2._amount), fromWei(tokens[2]))
      assert.equal(balance._block.toString(), block)
    })
   //  async() =>{
@@ -148,7 +174,7 @@ let tokenContract;
     let expected = 'vesting isn\'t started yet'
     let msg;
     try {
-      tx = await tokenSale.claim(block,{from: user});
+      tx = await tokenSale.claim({from: user});
     } catch (error) {
       msg = error.reason;
     }
@@ -158,9 +184,37 @@ let tokenContract;
    it('End the sale, only owner can end the sale', async () => {
     let owner = accounts[0];
     
-     let tx =  await tokenSale.endSale({from: owner});
+    let burnt = await tokenSale.getBurnt.call();
+    console.log(web3.utils.fromWei(burnt))
+/**
+ * commenting out this testcase in favour of below test where sale be ended when hardcap reached
+ * Not manually
+ * 
+ */
+ /** 
+    let tx =  await tokenSale.endSale({from: owner});
 
-     assert.equal(tx.logs[0].event, 'EndSale')
+    let balance4 = await tokenContract.balanceOf.call(tokenSale.address);
+    console.log(web3.utils.fromWei(balance4))
+
+    assert.equal(tx.logs[0].event, 'EndSale')
+    */
+   })
+   it('Sale End when Hardcap reached', async () => {
+    // hardcap reach
+    let buyer = accounts[7];
+    let ethRaised = await tokenSale.totalEthRaised.call();
+
+    console.log(ethRaised.toString())
+
+    let eth = _hardCap - ethRaised;
+    let block = 1;
+    let tx = await tokenSale.buyTokens(block,{value: eth,from: buyer});
+
+    let ethRaised2 = await tokenSale.totalEthRaised.call();
+   // ethRaised2 = web3.utils.fromWei(ethRaised);
+    assert.equal(ethRaised2.toString(),_hardCap);
+     assert.equal(tx.logs[1].event, 'EndSale')
    })
    it('Tokens can\'t be bought after sale ended or before sale started', async () => {
     let user = accounts[6];
@@ -177,13 +231,13 @@ let tokenContract;
    })
    it('Tokens can be issued from nonSaleable blocks after sale ended, only owner can add new users', async () => {
     let owner = accounts[0];
-    let holder = accounts[6];
-    let tokens = "20";
-    let block = "6";
+    let holder = [accounts[6]];
+    let tokens = [web3.utils.toWei("20")];
+    let block = "5";
       await tokenSale.issueNonSaleTokens(holder,tokens,block,{from: owner});
  
-     const balance = await tokenSale.balanceOfBlock.call(holder);
-     assert.equal(balance._amount.toString(), tokens)
+     const balance = await tokenSale.balanceOfBlock.call(holder[0]);
+     assert.equal(balance._amount.toString(), tokens[0])
      assert.equal(balance._block.toString(), block)
    })
    it('Tokens can\'t be vested before lock period ended', async () => {
@@ -193,7 +247,7 @@ let tokenContract;
     let expected = false
     let msg;
     try {
-      tx = await tokenSale.claim(block,{from: user});
+      tx = await tokenSale.claim({from: user});
     } catch (error) {
       msg = error.reason;
       expected = true
@@ -220,11 +274,12 @@ let tokenContract;
       // console.log(tx2r.day.toString())
       // console.log(tx2r.value.toString())
 
-      let tx = await tokenSale.claim(block,{from: holder});
-      console.log(web3.utils.fromWei(tx.logs[1].args.amount))
-      console.log(tx.logs[0].args.value.toString())
-      assert.equal(tx.logs[1].event, 'Vesting')
-      assert.equal(tx.logs[0].event, 'Transfer')
+      let tx = await tokenSale.claim({from: holder});
+      console.log(web3.utils.fromWei(tx.logs[0].args.amount))
+      assert.equal(tx.logs[0].event, 'Vesting')
+      let balance = await tokenContract.balanceOf.call(holder);
+    console.log(web3.utils.fromWei(balance))
+      assert.equal(web3.utils.fromWei(balance),'36000');
    })
    it('Claiming vested tokens of block#1', async () => {
     
@@ -233,7 +288,7 @@ let tokenContract;
     let holder = accounts[1];
     let tokens = "14";
     let block = "1";
-    let time = getTimestamp(2021,"01","09","13");
+    let time = getTimestamp(2021,"01","09","00");
 
       let tx2 = await tokenSale.setEndTime(time,{from: owner});
       let time2 = await tokenSale.endTime.call();
@@ -246,20 +301,35 @@ let tokenContract;
       // console.log(tx2r.day.toString())
       // console.log(tx2r.value.toString())
 
-      let tx = await tokenSale.claim(block,{from: holder});
-      console.log(web3.utils.fromWei(tx.logs[1].args.amount))
-      console.log(tx.logs[0].args.value.toString())
-      assert.equal(tx.logs[1].event, 'Vesting')
-      assert.equal(tx.logs[0].event, 'Transfer')
+      let tx = await tokenSale.claim({from: holder});
+      console.log(web3.utils.fromWei(tx.logs[0].args.amount))
+      assert.equal(tx.logs[0].event, 'Vesting')
+      let balance = await tokenContract.balanceOf.call(holder);
+      console.log(web3.utils.fromWei(balance))
+    //  assert.equal(web3.utils.fromWei(balance),'8016');
+
    })
-   it('Claiming vested tokens of block#5', async () => {
+   it('Claiming vested tokens of block#5 after 50% vesting period over', async () => {
     
     
     let owner = accounts[0];
     let holder = accounts[5];
     let tokens = "14";
     let block = "5";
-    let time = getTimestamp(2020,"12","01","13");
+  //  let time = getTimestamp(2020,"12","01","13");
+    let time = Math.floor(new Date().getTime() / 1000);
+    // 30 days lock period + 90 days (50% vesting period)
+    const secondsDay = 86400;
+    let lockPeriod = 30 * secondsDay;
+    let halfVestingPeriod = (180/2) * secondsDay;
+    time = time - (lockPeriod + halfVestingPeriod);
+    // calculate 50% vesting token amount
+    let balance = await tokenSale.balanceOfBlock.call(holder);
+    balance = web3.utils.fromWei(balance._amount); 
+    
+    let vestAmount = await tokenSale.perCalc.call(web3.utils.toWei(balance),5479452055,1000000000000);
+    vestAmount = web3.utils.fromWei(vestAmount.mul(web3.utils.toBN("90"))); // 1 day amount
+   // vestAmount = vestAmount * (180/2) // 50% vesting amount (90 days)
 
       let tx2 = await tokenSale.setEndTime(time,{from: owner});
       let time2 = await tokenSale.endTime.call();
@@ -271,63 +341,31 @@ let tokenContract;
       // console.log(tx2r.hour.toString())
       // console.log(tx2r.day.toString())
       // console.log(tx2r.value.toString())
-try {
-   let tx = await tokenSale.claim(block,{from: holder});
-      console.log(web3.utils.fromWei(tx.logs[1].args.amount))
-      console.log(tx.logs[0].args.value.toString())
-      assert.equal(tx.logs[1].event, 'Vesting')
-      assert.equal(tx.logs[0].event, 'Transfer')
-} catch (error) {
-  console.log(error.reason)
-  assert.equal(error.reason,'vesting isn\'t started yet')
-}
+
+   let tx = await tokenSale.claim({from: holder});
+      console.log(web3.utils.fromWei(tx.logs[0].args.amount))
+      assert.equal(tx.logs[0].event, 'Vesting')
+      let balance2 = await tokenContract.balanceOf.call(holder);
+      console.log(web3.utils.fromWei(balance2))
+      assert.equal(vestAmount,web3.utils.fromWei(balance2))
+
      
 })
-it('Refral reward', async () => {
-    
-    
+
+it('Uniswap liquidity 30.5% ETH , withdrawal(by only owner) for manual uniswap listing', async () => {
   let owner = accounts[0];
-  let holder = accounts[6];
-  let tokens = "14";
-  
-  let ethBalance = await tokenSale.ethBalanceOfContract.call();
-  let ethBalanceOfReward = await tokenSale.ethBalanceOfReferalReward.call();
-  let ethBalanceOfUniswap = await tokenSale.ethBalanceOfUniswap.call();
-
-  ethBalance = web3.utils.fromWei(ethBalance);
-  ethBalanceOfReward = web3.utils.fromWei(ethBalanceOfReward)
-  ethBalanceOfUniswap = web3.utils.fromWei(ethBalanceOfUniswap)
-
-  let toWei = web3.utils.toWei;
-  let fromWei = web3.utils.fromWei;
-
-  let balance = web3.utils.fromWei(await web3.eth.getBalance(holder));
-  let tx = await tokenSale.referalReward(holder,toWei('0.2'),{from: owner});
-    let balance2 = web3.utils.fromWei(await web3.eth.getBalance(holder));
-
-    let ethBalanceOfReward2 = await tokenSale.ethBalanceOfReferalReward.call();
-    ethBalanceOfReward2 = web3.utils.fromWei(ethBalanceOfReward2)
-
-    assert.equal(fromWei(""+(parseInt(toWei(balance)) + parseInt(toWei("0.2"))))  , balance2)
-    assert.equal(parseFloat(ethBalanceOfReward) - 0.2, ethBalanceOfReward2 )
-
-   
-})
-it('Uniswap liquidity 30.5% ETH withdrawal(by only owner) for manual uniswap listing', async () => {
-  let owner = accounts[0];
-  let withdrawTo = accounts[7];
-  let tokens = "14";
-  
+  let uniswapLiquidity = accounts[9]
   let ethBalanceOfUniswap = await tokenSale.ethBalanceOfUniswap.call();
   ethBalanceOfUniswap = web3.utils.fromWei(ethBalanceOfUniswap)
 
   let toWei = web3.utils.toWei;
   let fromWei = web3.utils.fromWei;
 
-  let balance = web3.utils.fromWei(await web3.eth.getBalance(withdrawTo));
-  let tx = await tokenSale.uniswapEthWithdraw(withdrawTo,{from: owner});
-    let balance2 = web3.utils.fromWei(await web3.eth.getBalance(withdrawTo));
-
+  let balance = web3.utils.fromWei(await web3.eth.getBalance(uniswapLiquidity));
+  let tx = await tokenSale.uniswapEthWithdraw(uniswapLiquidity,{from: owner});
+    let balance2 = web3.utils.fromWei(await web3.eth.getBalance(uniswapLiquidity));
+    console.log(fromWei(""+(parseInt(toWei(balance)) + parseInt(toWei(ethBalanceOfUniswap)))) +" :: "+ balance2)
+    
     assert.equal(fromWei(""+(parseInt(toWei(balance)) + parseInt(toWei(ethBalanceOfUniswap))))  , balance2)
     
  })
@@ -355,7 +393,7 @@ it('Uniswap liquidity 30.5% ETH withdrawal(by only owner) for manual uniswap lis
   let holder = accounts[2];
   let block = 10;
   try {
-    let tx = await tokenSale.claim(block,{from: holder});
+    let tx = await tokenSale.claim({from: holder});
        
  } catch (error) {
    console.log(error.reason)

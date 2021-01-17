@@ -13,7 +13,7 @@ module.exports = async function (deployer) {
   let _symbol = 'MOD';
   deployer.deploy(tokenSale,_startTime,_softCap,_hardCap,_minBuy, _maxBuy,
      _companyWallet, _ethPrice).then(_saleContract=>{
-        deployer.deploy(erc20,_tokenName,_symbol, _saleContract);
+       // deployer.deploy(erc20,_tokenName,_symbol, _saleContract);
      })
   
   
