@@ -9,7 +9,7 @@ let tokenContract;
     let _softCap = web3.utils.toWei('10');
     let _hardCap = web3.utils.toWei("100");
     let _minBuy = web3.utils.toWei("0.15");
-    let _maxBuy = web3.utils.toWei("500");
+    let _maxBuy = web3.utils.toWei("80");
     let _companyWallet = accounts[0]
     let _ethPrice = '60000'  // price in Pennies ($ * 100)
     let _tokenName = 'MOD';
@@ -50,7 +50,7 @@ let tokenContract;
     assert.equal(fromWei(tx.logs[0].args.amount),fromWei(tokens[0]))
 
     const balance = await tokenSale.balanceOfBlock.call(user[0]);
-    assert.equal(web3.utils.fromWei(balance._amount), from(tokens[0]));
+    assert.equal(web3.utils.fromWei(balance._amount), fromWei(tokens[0]));
     assert.equal(balance._block.toString(), block)
     
   })
@@ -59,18 +59,21 @@ let tokenContract;
     let eth = "12";
     let tokensPurchased = "36000";
     let block = "2";
+    let fromWei = web3.utils.fromWei;
     let tx =  await tokenSale.buyTokens(block,{value: web3.utils.toWei(eth),from: user});
 
       assert.equal(tx.logs[0].event, 'ReferalReward');
       assert.equal(tx.logs[0].args.to,_companyWallet)
-      console.log(fromWei(tx.logs[0].args.amount)+"::"+(eth * 25)/1000)
+      console.log(fromWei(tx.logs[0].args.amount)+"::"+(parseInt(eth) * 25)/1000)
       assert.equal(fromWei(tx.logs[0].args.amount),(eth * 25)/1000)
 
 
      const balance = await tokenSale.balanceOfBlock.call(user);
      assert.equal(web3.utils.fromWei(balance._amount), tokensPurchased)
      assert.equal(balance._block.toString(), block)
+     
    })
+   
    it('Buy Tokens of block#3', async () => {
     let user = accounts[3];
     let eth = "20";
@@ -109,7 +112,7 @@ let tokenContract;
    it('A user can\'t buy tokens below set minimum Buy limit', async () => {
     let user = accounts[5];
     let eth = "0.14";
-    let block = "1";
+    let block = "2";
     let expected = 'eth sent too low'
     let msg;
     try {
@@ -121,8 +124,8 @@ let tokenContract;
    })
    it('A user can\'t buy more tokens then set maximum Buy limit', async () => {
     let user = accounts[5];
-    let eth = "501";
-    let block = "1";
+    let eth = "81";
+    let block = "2";
     let expected = 'eth sent too high'
     let msg;
     try {
@@ -208,7 +211,7 @@ let tokenContract;
     console.log(ethRaised.toString())
 
     let eth = _hardCap - ethRaised;
-    let block = 1;
+    let block = 2;
     let tx = await tokenSale.buyTokens(block,{value: eth,from: buyer});
 
     let ethRaised2 = await tokenSale.totalEthRaised.call();
@@ -388,17 +391,7 @@ it('Uniswap liquidity 30.5% ETH , withdrawal(by only owner) for manual uniswap l
    assert.equal(block.supply.toString(), block.issued.toString())
     
  })
- it('Bogus block should not be allowed to vest', async () => {
-  
-  let holder = accounts[2];
-  let block = 10;
-  try {
-    let tx = await tokenSale.claim({from: holder});
-       
- } catch (error) {
-   console.log(error.reason)
-   assert.equal(error.reason,'no tokens to vest')
- }
+
     
  })
 
