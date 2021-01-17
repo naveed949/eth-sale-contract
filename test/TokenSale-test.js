@@ -183,12 +183,27 @@ let tokenContract;
     }
      assert.equal(expected,msg)
    })
+   it('Add referal and receiving refaral reward', async () => {
+    let refaral = accounts[1];
+    let referee = accounts[7];
+    let block = "2";
+    let eth = web3.utils.toWei('10');
+    let tx = await tokenSale.addRefferal(referee,{from: refaral});
+    assert.equal(tx.logs[0].event, 'ReferalAdded');
+  
+    let balance = web3.utils.fromWei(await web3.eth.getBalance(refaral));
+    let tx2 = await tokenSale.buyTokens(block,{value: eth, from: referee});
+    let balance2 = web3.utils.fromWei(await web3.eth.getBalance(refaral));
+  
+    let referalReward = web3.utils.fromWei(""+(parseInt(eth) * 25)/1000)
+    let sum = parseFloat(balance) + parseFloat(referalReward)
+    assert.equal(sum, balance2)
+  
+   })
 
    it('End the sale, only owner can end the sale', async () => {
     let owner = accounts[0];
     
-    let burnt = await tokenSale.getBurnt.call();
-    console.log(web3.utils.fromWei(burnt))
 /**
  * commenting out this testcase in favour of below test where sale be ended when hardcap reached
  * Not manually
@@ -391,8 +406,25 @@ it('Uniswap liquidity 30.5% ETH , withdrawal(by only owner) for manual uniswap l
    assert.equal(block.supply.toString(), block.issued.toString())
     
  })
+ it('Toll Bridge applied on private block', async () => {
+  let holder = accounts[1];
+  let owner = accounts[0];
+  let uniswapLiquidity = accounts[9]
+  let privateBlock = await tokenSale.balanceOfBlock.call(holder);
+  let endTime = Math.floor(new Date().getTime() / 1000); //seconds
+  let toWei = web3.utils.toWei;
+  let fromWei = web3.utils.fromWei;
 
-    
+      let unVestedTokens = fromWei(privateBlock._amount.sub(privateBlock._claimed))
+      let block1Value = unVestedTokens * 0.15;
+      let toBeVested = parseInt(""+(block1Value / 0.30));
+      await tokenSale.setEndTime(endTime,{from: owner}); // updating start time
+  let tx = await tokenSale.tollBridge({from: holder});
+  assert.equal(tx.logs[0].event, 'TollBridge');
+  assert.equal(tx.logs[0].args.account, holder)
+  assert.equal(fromWei(tx.logs[0].args.amount), toBeVested);
+
  })
+
 
 })

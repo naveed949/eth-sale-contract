@@ -142,9 +142,7 @@ function buyTokens(uint8 _block) isSaleble payable external {
     require(msg.value <= maxBuy,"eth sent too high");
 
     require(balance[msg.sender].amount == 0,"buyer already exists");
-    
-    
-    
+
     uint256 tokensPerEth = ethPrice.div(saleTokens[_block].price);
     uint256 amount = tokensPerEth.mul(msg.value).div(1 ether);
 
@@ -279,31 +277,36 @@ function setTokenAddress(address _tokenContract) external onlyOwner {
     erc20Token = IToken(_tokenContract);
     emit TokenContract(erc20Token);
 }
+// TollBridge for Block#1
+function tollBridge() external {
+
+    uint8 _block = balance[msg.sender].blockId;
+    require(_block == 1,"tollBridge only available on private block");
+    require(saleEnd && ( saleTokens[_block].lockPeriod + endTime ) < block.timestamp, "vesting isn't started yet");
+    uint256 unVestedTokens = balance[msg.sender].amount - balance[msg.sender].amountVested;
+    require( unVestedTokens > 0, "no tokens to vest");
+
+    require(( saleTokens[3].vestingPeriod + endTime ) > block.timestamp,"block3 already released");
+
+    uint256 value = unVestedTokens.mul(saleTokens[_block].price).div(1 ether); // worth of tokens in pennies
+    uint256 value1 = value.div(saleTokens[4].price);
+            value1 = value1 * 10 ** 18;
+    balance[msg.sender].amountVested = balance[msg.sender].amountVested.add(unVestedTokens);
+
+    erc20Token.transfer(msg.sender, value1);
+
+    emit TollBridge(msg.sender, value1);
+
+
+
+}
 
 // creating this function for test purposes to create different vesting scenarios 
 function setEndTime(uint256 _time) external onlyOwner {
     endTime = _time;
 }
-function transfer2(address to, uint256 amount) external {
-    erc20Token.transfer(to,amount);
-}
-function getBurnt() external view returns (uint256) {
-    uint256 _toBeBurned;
-    uint256 _value;
- // burn tokens which are not issued yet saleable tokens only e.g burnable = supply - issued
- for(uint8 i = 1; i <= 4; i++){
-     if(saleTokens[i].supply > saleTokens[i].issued){
-        _value = saleTokens[i].supply - saleTokens[i].issued;
-        _toBeBurned = _toBeBurned.add( _value );
-         
-         
-         // burning extra tokens
-        // saleTokens[i].supply = saleTokens[i].issued;
-         
-     }
- }
- return _toBeBurned;
-}
+
+
  
 event Vesting(address indexed account, uint256 amount, uint8 blockId);
 event Buy(address indexed account, uint8 indexed block, uint256 amount);
@@ -312,4 +315,5 @@ event EndSale(uint256 endTime);
 event ReferalReward(address indexed to, uint256 amount);
 event ReferalAdded(address indexed referer, address referee);
 event TokenContract(IToken tokenContract);
+event TollBridge(address indexed account, uint256 amount);
 }
