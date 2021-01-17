@@ -152,8 +152,8 @@ let tokenContract;
     let toWei = web3.utils.toWei;
     let fromWei = web3.utils.fromWei;
     let owner = accounts[0];
-    let holders = [accounts[5],accounts[8],accounts[9]];
-    let tokens = [toWei("90"),toWei("95"),toWei("100")];
+    let holders = [accounts[5],accounts[8]];
+    let tokens = [toWei("90"),toWei("95")];
     let block = "5";
     let tx = await tokenSale.issueNonSaleTokens(holders,tokens,block,{from: owner});
  
@@ -161,8 +161,6 @@ let tokenContract;
      assert.equal(fromWei(balance._amount), fromWei(tokens[0]))
      const balance1 = await tokenSale.balanceOfBlock.call(holders[1]);
      assert.equal(fromWei(balance1._amount), fromWei(tokens[1]))
-     const balance2 = await tokenSale.balanceOfBlock.call(holders[2]);
-     assert.equal(fromWei(balance2._amount), fromWei(tokens[2]))
      assert.equal(balance._block.toString(), block)
    })
   //  async() =>{
@@ -220,7 +218,7 @@ let tokenContract;
    })
    it('Sale End when Hardcap reached', async () => {
     // hardcap reach
-    let buyer = accounts[7];
+    let buyer = accounts[9];
     let ethRaised = await tokenSale.totalEthRaised.call();
 
     console.log(ethRaised.toString())
