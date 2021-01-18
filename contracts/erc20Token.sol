@@ -12,7 +12,7 @@ address saleContract;
 constructor(string memory _tokenName, string memory _symbol, address _saleContract) ERC20(_tokenName, _symbol) public {
       // mint all blocks tokens at once and transfer to tokenSale contract
       saleContract = _saleContract;
-      uint256 _supply = 16000000 * 10 ** 18;
+      uint256 _supply = 16500000 * 10 ** 18;
       _mint( saleContract, _supply );
 }
 // burn function to let sale contract burn all saleable blocks tokens which wasn't purchased
